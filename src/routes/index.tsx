@@ -180,7 +180,7 @@ function OkaiDashboard() {
     return result.confidence;
   }, [result]);
 
-  async function runAnalysis() {
+  async function runAnalysisLegacy() {
     if (!canAnalyze || materialUploadState === "uploading") return;
 
     if (materialFiles.length > 0) {
@@ -354,6 +354,44 @@ function OkaiDashboard() {
       copy,
       missing,
     });
+  }
+
+  async function runAnalysis() {
+    if (!canAnalyze || materialUploadState === "uploading") return;
+
+    const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
+    const maxFileSize = 10 * 1024 * 1024;
+    const analysisId = crypto.randomUUID();
+    const uploadedPaths: string[] = [];
+
+    setMaterialUploadState("uploading");
+    setMaterialUploadError("");
+    setUploadedMaterialCount(0);
+
+    try {
+      for (let index = 0; index < materialFiles.length; index += 1) {
+        const material = materialFiles[index];
+        if (!allowedTypes.includes(material.file.type)) throw new Error(`Formato inválido em "${material.file.name}". Use PNG, JPG, JPEG ou WEBP.`);
+        if (material.file.size > maxFileSize) throw new Error(`"${material.file.name}" excede o limite de 10 MB.`);
+
+        const safeFileName = material.file.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9._-]/g, "-").replace(/-+/g, "-");
+        const storagePath = `${analysisId}/${crypto.randomUUID()}-${safeFileName}`;
+        const { error } = await supabase.storage.from("influencer-analysis").upload(storagePath, material.file, { cacheControl: "3600", contentType: material.file.type, upsert: false });
+        if (error) throw new Error(error.message);
+        uploadedPaths.push(storagePath);
+        setUploadedMaterialCount(index + 1);
+      }
+
+      const { data, error } = await supabase.functions.invoke("analyze-influencer", { body: { analysisId, profile: { handle, name, niche, followers, engagement, views, frequency, history, observations, audience, authenticity, conversion, contentQuality } } });
+      if (error) throw new Error(error.message);
+      if (!data || typeof data !== "object") throw new Error("A Edge Function não retornou um relatório válido.");
+      setResult(data as Analysis);
+      setMaterialUploadState("success");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Não foi possível concluir a análise de IA.";
+      setMaterialUploadError(message);
+      setMaterialUploadState("error");
+    }
   }
 
   function addMaterialFiles(fileList: FileList | null) {
