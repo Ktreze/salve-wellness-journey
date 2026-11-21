@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OKAI Scanner</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --black: #030504;
+        --surface: #090d0a;
+        --surface-soft: rgba(255, 255, 255, 0.035);
+        --border: rgba(255, 255, 255, 0.09);
+        --neon: #82f58b;
+        --neon-strong: #4ade80;
+        --text: #f4fff5;
+        --muted: rgba(235, 255, 238, 0.52);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        width: 380px;
+        min-height: 470px;
+        margin: 0;
+        overflow-x: hidden;
+        background:
+          radial-gradient(circle at 85% 5%, rgba(74, 222, 128, 0.13), transparent 28%),
+          radial-gradient(circle at 5% 85%, rgba(130, 245, 139, 0.07), transparent 32%),
+          var(--black);
+        color: var(--text);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      button,
+      a {
+        font: inherit;
+      }
+
+      .shell {
+        position: relative;
+        min-height: 470px;
+        padding: 22px;
+      }
+
+      .shell::before {
+        position: absolute;
+        top: 0;
+        left: 22px;
+        right: 22px;
+        height: 1px;
+        content: "";
+        background: linear-gradient(90deg, transparent, var(--neon), transparent);
+        opacity: 0.75;
+      }
+
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+      }
+
+      .brand-mark {
+        display: grid;
+        width: 42px;
+        height: 42px;
+        place-items: center;
+        border: 1px solid rgba(130, 245, 139, 0.32);
+        border-radius: 13px;
+        background: linear-gradient(145deg, rgba(130, 245, 139, 0.18), rgba(130, 245, 139, 0.04));
+        box-shadow: 0 0 24px rgba(74, 222, 128, 0.12);
+        color: var(--neon);
+        font-size: 14px;
+        font-weight: 900;
+        letter-spacing: -0.03em;
+      }
+
+      .brand-name {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 850;
+        letter-spacing: 0.12em;
+      }
+
+      .brand-subtitle {
+        margin: 3px 0 0;
+        color: var(--neon);
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+      }
+
+      .active-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 7px 10px;
+        border: 1px solid rgba(130, 245, 139, 0.18);
+        border-radius: 999px;
+        background: rgba(130, 245, 139, 0.055);
+        color: rgba(217, 255, 222, 0.74);
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .active-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--neon);
+        box-shadow: 0 0 10px var(--neon);
+      }
+
+      .status-card {
+        margin-top: 24px;
+        padding: 18px;
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        background: linear-gradient(145deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018));
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.24);
+      }
+
+      .status-row {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .status-indicator {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #64706a;
+      }
+
+      .status-card[data-status="profile_detected"] .status-indicator {
+        background: var(--neon);
+        box-shadow: 0 0 12px var(--neon);
+      }
+
+      .status-card[data-status="not_profile"] .status-indicator {
+        background: #fbbf24;
+        box-shadow: 0 0 10px rgba(251, 191, 36, 0.55);
+      }
+
+      .profile {
+        display: grid;
+        grid-template-columns: 82px minmax(0, 1fr);
+        gap: 16px;
+        align-items: center;
+        margin-top: 20px;
+      }
+
+      .avatar {
+        display: grid;
+        width: 82px;
+        height: 82px;
+        place-items: center;
+        overflow: hidden;
+        border: 1px solid rgba(130, 245, 139, 0.25);
+        border-radius: 24px;
+        background: rgba(130, 245, 139, 0.06);
+        box-shadow: 0 0 22px rgba(74, 222, 128, 0.08);
+        color: rgba(130, 245, 139, 0.72);
+        font-size: 23px;
+        font-weight: 850;
+      }
+
+      .avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .profile-copy {
+        min-width: 0;
+      }
+
+      .display-name {
+        margin: 0;
+        overflow: hidden;
+        color: var(--text);
+        font-size: 17px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .username {
+        margin: 5px 0 0;
+        color: var(--neon);
+        font-size: 12px;
+        font-weight: 650;
+      }
+
+      .profile-link {
+        display: inline-block;
+        max-width: 100%;
+        margin-top: 7px;
+        overflow: hidden;
+        color: var(--muted);
+        font-size: 10px;
+        text-decoration: none;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .profile-link:hover {
+        color: var(--neon);
+      }
+
+      .biography {
+        margin: 17px 0 0;
+        padding-top: 16px;
+        border-top: 1px solid rgba(255, 255, 255, 0.065);
+        color: rgba(235, 255, 238, 0.67);
+        font-size: 11px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+      }
+
+      .empty-copy {
+        margin: 17px 0 0;
+        padding-top: 16px;
+        border-top: 1px solid rgba(255, 255, 255, 0.065);
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.6;
+      }
+
+      .actions {
+        margin-top: 18px;
+      }
+
+      .instagram-button {
+        display: flex;
+        width: 100%;
+        height: 44px;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+        border: 0;
+        border-radius: 13px;
+        background: linear-gradient(100deg, var(--neon-strong), var(--neon));
+        box-shadow: 0 10px 28px rgba(74, 222, 128, 0.14);
+        color: #041007;
+        cursor: pointer;
+        font-size: 11px;
+        font-weight: 850;
+        letter-spacing: 0.07em;
+        text-decoration: none;
+        text-transform: uppercase;
+        transition: transform 150ms ease, box-shadow 150ms ease;
+      }
+
+      .instagram-button:hover {
+        box-shadow: 0 12px 32px rgba(74, 222, 128, 0.24);
+        transform: translateY(-1px);
+      }
+
+      .instagram-button:disabled {
+        cursor: not-allowed;
+        filter: grayscale(0.8);
+        opacity: 0.45;
+        transform: none;
+      }
+
+      .instagram-icon {
+        width: 17px;
+        height: 17px;
+        border: 2px solid currentColor;
+        border-radius: 5px;
+        position: relative;
+      }
+
+      .instagram-icon::before {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 5px;
+        height: 5px;
+        border: 1.5px solid currentColor;
+        border-radius: 50%;
+        content: "";
+      }
+
+      .instagram-icon::after {
+        position: absolute;
+        top: 2px;
+        right: 2px;
+        width: 2px;
+        height: 2px;
+        border-radius: 50%;
+        background: currentColor;
+        content: "";
+      }
+
+      .footer {
+        margin: 18px 0 0;
+        color: rgba(235, 255, 238, 0.28);
+        font-size: 9px;
+        letter-spacing: 0.08em;
+        text-align: center;
+        text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="header">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">OK</div>
+          <div>
+            <h1 class="brand-name">OKAI SCANNER</h1>
+            <p class="brand-subtitle">Instagram intelligence</p>
+          </div>
+        </div>
+        <div class="active-badge" aria-label="Extensão ativa">
+          <span class="active-dot" aria-hidden="true"></span>
+          Ativa
+        </div>
+      </header>
+
+      <section class="status-card" id="status-card" data-status="waiting" aria-live="polite">
+        <div class="status-row">
+          <span class="status-indicator" aria-hidden="true"></span>
+          <span id="status-text">Aguardando perfil</span>
+        </div>
+
+        <div class="profile">
+          <div class="avatar" id="avatar" aria-label="Foto do perfil">
+            <span id="avatar-fallback">?</span>
+          </div>
+          <div class="profile-copy">
+            <h2 class="display-name" id="display-name">Aguardando identificação</h2>
+            <p class="username" id="username">Nenhum perfil detectado</p>
+            <a class="profile-link" id="profile-link" href="https://www.instagram.com/" target="_blank" rel="noreferrer">instagram.com</a>
+          </div>
+        </div>
+
+        <p class="empty-copy" id="biography">Abra um perfil do Instagram para que o scanner identifique os dados públicos disponíveis.</p>
+      </section>
+
+      <div class="actions">
+        <a class="instagram-button" id="instagram-button" href="https://www.instagram.com/" target="_blank" rel="noreferrer">
+          <span class="instagram-icon" aria-hidden="true"></span>
+          Abrir Instagram
+        </a>
+      </div>
+
+      <p class="footer">Leitura automática de perfil público</p>
+    </main>
+
+    <script>
+      (() => {
+        "use strict";
+
+        const STORAGE_KEY = "okaiDetectedProfile";
+        const elements = {
+          card: document.getElementById("status-card"),
+          status: document.getElementById("status-text"),
+          avatar: document.getElementById("avatar"),
+          avatarFallback: document.getElementById("avatar-fallback"),
+          displayName: document.getElementById("display-name"),
+          username: document.getElementById("username"),
+          profileLink: document.getElementById("profile-link"),
+          biography: document.getElementById("biography"),
+          instagramButton: document.getElementById("instagram-button")
+        };
+
+        function cleanText(value) {
+          return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+        }
+
+        function safeUrl(value) {
+          if (typeof value !== "string" || !value.trim()) return null;
+          try {
+            const url = new URL(value);
+            return ["http:", "https:"].includes(url.protocol) ? url.href : null;
+          } catch {
+            return null;
+          }
+        }
+
+        function setText(element, value) {
+          element.textContent = value;
+        }
+
+        function renderAvatar(profile) {
+          const avatarUrl = safeUrl(profile?.avatarUrl);
+          elements.avatar.replaceChildren();
+
+          if (avatarUrl) {
+            const image = document.createElement("img");
+            image.src = avatarUrl;
+            image.alt = profile?.displayName ? `Foto de ${profile.displayName}` : "Foto do perfil detectado";
+            image.addEventListener("error", () => {
+              elements.avatar.replaceChildren();
+              const fallback = document.createElement("span");
+              fallback.textContent = "?";
+              elements.avatar.appendChild(fallback);
+            }, { once: true });
+            elements.avatar.appendChild(image);
+            return;
+          }
+
+          const fallback = document.createElement("span");
+          fallback.textContent = profile?.username ? profile.username.charAt(0).toUpperCase() : "?";
+          elements.avatar.appendChild(fallback);
+        }
+
+        function render(profile) {
+          const detected = profile?.status === "profile_detected";
+          const notProfile = profile?.status === "not_profile";
+          const username = cleanText(profile?.username);
+          const displayName = cleanText(profile?.displayName);
+          const biography = cleanText(profile?.biography);
+          const profileUrl = safeUrl(profile?.profileUrl);
+          const sourceUrl = safeUrl(profile?.sourceUrl);
+          const destination = profileUrl || sourceUrl || "https://www.instagram.com/";
+
+          elements.card.dataset.status = detected
+            ? "profile_detected"
+            : notProfile
+              ? "not_profile"
+              : "waiting";
+
+          if (detected) {
+            setText(elements.status, "Perfil identificado");
+            setText(elements.displayName, displayName || "Nome não disponível");
+            setText(elements.username, username ? `@${username}` : "Usuário não disponível");
+            setText(elements.biography, biography || "Biografia não disponível");
+            elements.biography.classList.remove("empty-copy");
+          } else if (notProfile) {
+            setText(elements.status, "Página não reconhecida");
+            setText(elements.displayName, "Perfil não identificado");
+            setText(elements.username, "A página atual não é um perfil");
+            setText(elements.biography, "Abra um perfil público do Instagram para iniciar a identificação automática.");
+            elements.biography.classList.add("empty-copy");
+          } else {
+            setText(elements.status, "Aguardando perfil");
+            setText(elements.displayName, "Aguardando identificação");
+            setText(elements.username, "Nenhum perfil detectado");
+            setText(elements.biography, "Abra um perfil do Instagram para que o scanner identifique os dados públicos disponíveis.");
+            elements.biography.classList.add("empty-copy");
+          }
+
+          renderAvatar(detected ? profile : null);
+
+          elements.profileLink.href = destination;
+          elements.profileLink.textContent = profileUrl || sourceUrl || "instagram.com";
+          elements.instagramButton.href = destination;
+        }
+
+        async function loadProfile() {
+          try {
+            const stored = await chrome.storage.local.get(STORAGE_KEY);
+            render(stored?.[STORAGE_KEY] || null);
+          } catch {
+            render(null);
+          }
+        }
+
+        chrome.storage.onChanged.addListener((changes, areaName) => {
+          if (areaName === "local" && Object.prototype.hasOwnProperty.call(changes, STORAGE_KEY)) {
+            render(changes[STORAGE_KEY].newValue || null);
+          }
+        });
+
+        loadProfile();
+      })();
+    </script>
+  </body>
+</html>
