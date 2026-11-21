@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "OKAI Instagram Scanner",
+  "version": "0.1.0",
+  "description": "Identifica automaticamente perfis do Instagram para a OKAI Influencer AI.",
+  "permissions": [
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://www.instagram.com/*",
+    "https://instagram.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.instagram.com/*",
+        "https://instagram.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
