@@ -11,6 +11,10 @@
     "https://www.instagram.com/*",
     "https://instagram.com/*"
   ],
+  "action": {
+    "default_title": "OKAI Instagram Scanner",
+    "default_popup": "popup.html"
+  },
   "content_scripts": [
     {
       "matches": [
