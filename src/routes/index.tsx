@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/")({
   component: OkaiDashboard,
@@ -160,6 +161,9 @@ function OkaiDashboard() {
   const [observations, setObservations] = useState("");
   const [materialFiles, setMaterialFiles] = useState<MaterialFile[]>([]);
   const [materialError, setMaterialError] = useState("");
+  const [materialUploadState, setMaterialUploadState] = useState<"idle" | "uploading" | "success" | "error">("idle");
+  const [materialUploadError, setMaterialUploadError] = useState("");
+  const [uploadedMaterialCount, setUploadedMaterialCount] = useState(0);
   const materialInputRef = useRef<HTMLInputElement>(null);
   const [audience, setAudience] = useState("adequada");
   const [authenticity, setAuthenticity] = useState("boa");
@@ -176,8 +180,59 @@ function OkaiDashboard() {
     return result.confidence;
   }, [result]);
 
-  function runAnalysis() {
-    if (!canAnalyze) return;
+  async function runAnalysis() {
+    if (!canAnalyze || materialUploadState === "uploading") return;
+
+    if (materialFiles.length > 0) {
+      const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
+      const maxFileSize = 10 * 1024 * 1024;
+      const analysisId = crypto.randomUUID();
+
+      setMaterialUploadState("uploading");
+      setMaterialUploadError("");
+      setUploadedMaterialCount(0);
+
+      try {
+        for (let index = 0; index < materialFiles.length; index += 1) {
+          const material = materialFiles[index];
+
+          if (!allowedTypes.includes(material.file.type)) {
+            throw new Error(`Formato inválido em "${material.file.name}". Use PNG, JPG, JPEG ou WEBP.`);
+          }
+
+          if (material.file.size > maxFileSize) {
+            throw new Error(`"${material.file.name}" excede o limite de 10 MB.`);
+          }
+
+          const safeFileName = material.file.name
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-zA-Z0-9._-]/g, "-")
+            .replace(/-+/g, "-");
+          const storagePath = `${analysisId}/${crypto.randomUUID()}-${safeFileName}`;
+          const { error } = await supabase.storage
+            .from("influencer-analysis")
+            .upload(storagePath, material.file, {
+              cacheControl: "3600",
+              contentType: material.file.type,
+              upsert: false,
+            });
+
+          if (error) {
+            throw new Error(error.message);
+          }
+
+          setUploadedMaterialCount(index + 1);
+        }
+
+        setMaterialUploadState("success");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Não foi possível enviar as imagens para o armazenamento.";
+        setMaterialUploadError(message);
+        setMaterialUploadState("error");
+        return;
+      }
+    }
 
     const followerNumber = parseLocaleNumber(followers);
     const engagementNumber = parseLocaleNumber(engagement);
@@ -513,9 +568,30 @@ function OkaiDashboard() {
                   />
                 </div>
 
-                {materialError && (
+                {(materialError || materialUploadError) && (
                   <p className="mt-3 rounded-lg border border-amber-300/20 bg-amber-300/[0.06] px-3 py-2 text-[10px] text-amber-200">
-                    {materialError}
+                    {materialError || materialUploadError}
+                  </p>
+                )}
+
+                {materialUploadState === "uploading" && (
+                  <div className="mt-3 rounded-lg border border-[#82f58b]/15 bg-[#82f58b]/[0.04] px-3 py-2">
+                    <div className="flex items-center justify-between text-[10px] text-white/45">
+                      <span>Enviando materiais...</span>
+                      <span>{uploadedMaterialCount} de {materialFiles.length}</span>
+                    </div>
+                    <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/[0.07]">
+                      <div
+                        className="h-full rounded-full bg-[#82f58b] transition-all duration-300"
+                        style={{ width: `${materialFiles.length ? (uploadedMaterialCount / materialFiles.length) * 100 : 0}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {materialUploadState === "success" && (
+                  <p className="mt-3 rounded-lg border border-[#82f58b]/15 bg-[#82f58b]/[0.05] px-3 py-2 text-[10px] text-[#82f58b]">
+                    {uploadedMaterialCount} {uploadedMaterialCount === 1 ? "imagem armazenada" : "imagens armazenadas"} com segurança.
                   </p>
                 )}
 
@@ -578,7 +654,7 @@ function OkaiDashboard() {
 
               <div className="mt-6 flex flex-col items-start justify-between gap-3 rounded-xl border border-[#82f58b]/15 bg-[#82f58b]/[0.035] p-4 sm:flex-row sm:items-center">
                 <div className="flex items-start gap-3"><FileText size={17} className="mt-0.5 shrink-0 text-[#82f58b]" /><p className="text-[11px] leading-5 text-white/40">A quantidade de seguidores é apenas um contexto. A decisão usa seis fatores ponderados e confiança conforme os dados disponíveis.</p></div>
-                <button onClick={runAnalysis} disabled={!canAnalyze} className="primary-button shrink-0"><Sparkles size={16} />Analisar perfil</button>
+                <button onClick={runAnalysis} disabled={!canAnalyze || materialUploadState === "uploading"} className="primary-button shrink-0"><Sparkles size={16} />{materialUploadState === "uploading" ? "Enviando materiais..." : "Analisar perfil"}</button>
               </div>
             </div>
 
