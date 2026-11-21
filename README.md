@@ -1,6 +1,6 @@
 # Salve Wellness Journey
 
-salve
+Salve Wellness Journey
 
 This project was built with [Lovable](https://lovable.dev).
 
