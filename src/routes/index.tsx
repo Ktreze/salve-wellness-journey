@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowUpRight,
@@ -66,6 +66,12 @@ type Analysis = {
   justification: string;
   copy: string;
   missing: string[];
+};
+
+type MaterialFile = {
+  id: string;
+  file: File;
+  previewUrl: string;
 };
 
 type Profile = {
@@ -152,6 +158,9 @@ function OkaiDashboard() {
   const [frequency, setFrequency] = useState("");
   const [history, setHistory] = useState("");
   const [observations, setObservations] = useState("");
+  const [materialFiles, setMaterialFiles] = useState<MaterialFile[]>([]);
+  const [materialError, setMaterialError] = useState("");
+  const materialInputRef = useRef<HTMLInputElement>(null);
   const [audience, setAudience] = useState("adequada");
   const [authenticity, setAuthenticity] = useState("boa");
   const [conversion, setConversion] = useState("media");
@@ -292,6 +301,58 @@ function OkaiDashboard() {
     });
   }
 
+  function addMaterialFiles(fileList: FileList | null) {
+    if (!fileList?.length) return;
+
+    const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
+    const maxFileSize = 10 * 1024 * 1024;
+    const maxFiles = 10;
+    const incomingFiles = Array.from(fileList);
+    const invalidType = incomingFiles.find((file) => !allowedTypes.includes(file.type));
+    const oversizedFile = incomingFiles.find((file) => file.size > maxFileSize);
+
+    if (invalidType) {
+      setMaterialError("Formato inválido. Envie apenas arquivos PNG, JPG, JPEG ou WEBP.");
+      return;
+    }
+
+    if (oversizedFile) {
+      setMaterialError("Cada imagem deve ter no máximo 10 MB.");
+      return;
+    }
+
+    setMaterialFiles((currentFiles) => {
+      const availableSlots = maxFiles - currentFiles.length;
+      if (availableSlots <= 0) {
+        setMaterialError("Você pode adicionar até 10 imagens por análise.");
+        return currentFiles;
+      }
+
+      if (incomingFiles.length > availableSlots) {
+        setMaterialError(`Serão adicionadas ${availableSlots} imagens. O limite é de 10 imagens por análise.`);
+      } else {
+        setMaterialError("");
+      }
+
+      const newFiles = incomingFiles.slice(0, availableSlots).map((file) => ({
+        id: `${file.name}-${file.lastModified}-${crypto.randomUUID()}`,
+        file,
+        previewUrl: URL.createObjectURL(file),
+      }));
+
+      return [...currentFiles, ...newFiles];
+    });
+  }
+
+  function removeMaterialFile(id: string) {
+    setMaterialFiles((currentFiles) => {
+      const fileToRemove = currentFiles.find((item) => item.id === id);
+      if (fileToRemove) URL.revokeObjectURL(fileToRemove.previewUrl);
+      return currentFiles.filter((item) => item.id !== id);
+    });
+    setMaterialError("");
+  }
+
   async function copyMessage() {
     if (!result) return;
     try {
@@ -414,6 +475,90 @@ function OkaiDashboard() {
                 <Field label="Engajamento médio" icon="%" placeholder="Ex.: 5,8" value={engagement} onChange={setEngagement} />
                 <Field label="Visualizações dos Reels" icon="▶" placeholder="Ex.: 31.400" value={views} onChange={setViews} />
                 <Field label="Frequência de publicação" icon="↻" placeholder="Ex.: 4 posts por semana" value={frequency} onChange={setFrequency} />
+              </div>
+
+              <div className="mt-6 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4">
+                <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-xs font-semibold text-white/80">Materiais para análise</h3>
+                      {materialFiles.length > 0 && (
+                        <span className="rounded-full border border-[#82f58b]/20 bg-[#82f58b]/[0.08] px-2 py-0.5 text-[9px] font-bold text-[#82f58b]">
+                          {materialFiles.length} {materialFiles.length === 1 ? "imagem" : "imagens"}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-2 max-w-xl text-[10px] leading-5 text-white/35">
+                      Envie capturas do perfil, publicações, comentários, Stories e métricas para que a inteligência artificial possa realizar uma avaliação mais completa.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => materialInputRef.current?.click()}
+                    className="secondary-button shrink-0"
+                  >
+                    <FileText size={15} />
+                    Adicionar imagens
+                  </button>
+                  <input
+                    ref={materialInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"
+                    multiple
+                    className="hidden"
+                    onChange={(event) => {
+                      addMaterialFiles(event.target.files);
+                      event.target.value = "";
+                    }}
+                  />
+                </div>
+
+                {materialError && (
+                  <p className="mt-3 rounded-lg border border-amber-300/20 bg-amber-300/[0.06] px-3 py-2 text-[10px] text-amber-200">
+                    {materialError}
+                  </p>
+                )}
+
+                {materialFiles.length > 0 && (
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {materialFiles.map((material) => (
+                      <div key={material.id} className="group relative overflow-hidden rounded-xl border border-white/[0.07] bg-[#0a0d0b]">
+                        <div className="aspect-[4/3] overflow-hidden bg-white/[0.03]">
+                          <img
+                            src={material.previewUrl}
+                            alt={`Prévia de ${material.file.name}`}
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2 p-3">
+                          <p className="min-w-0 flex-1 truncate text-[10px] text-white/55" title={material.file.name}>
+                            {material.file.name}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => removeMaterialFile(material.id)}
+                            className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-white/[0.08] text-white/35 transition-colors hover:border-red-400/20 hover:bg-red-400/10 hover:text-red-300"
+                            aria-label={`Remover ${material.file.name}`}
+                          >
+                            <X size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {materialFiles.length === 0 && (
+                  <button
+                    type="button"
+                    onClick={() => materialInputRef.current?.click()}
+                    className="mt-4 flex w-full flex-col items-center justify-center rounded-xl border border-dashed border-white/[0.1] bg-white/[0.015] px-4 py-7 text-center transition-colors hover:border-[#82f58b]/30 hover:bg-[#82f58b]/[0.025]"
+                  >
+                    <FileText size={20} className="mb-2 text-white/25" />
+                    <span className="text-[10px] font-semibold text-white/45">Selecione capturas e imagens do Instagram</span>
+                    <span className="mt-1 text-[9px] text-white/25">PNG, JPG, JPEG ou WEBP · até 10 MB por arquivo</span>
+                  </button>
+                )}
               </div>
 
               <div className="my-6 h-px bg-white/[0.07]" />
