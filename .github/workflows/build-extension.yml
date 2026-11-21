@@ -1,0 +1,92 @@
+name: Build OKAI Instagram Scanner Extension
+
+on:
+  push:
+    paths:
+      - "extension/okai-instagram-scanner/**"
+      - ".github/workflows/build-extension.yml"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+  pull_request:
+    paths:
+      - "extension/okai-instagram-scanner/**"
+      - ".github/workflows/build-extension.yml"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-extension:
+    name: Build and validate Chrome extension
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install project dependencies
+        run: npm ci
+
+      - name: Build extension archive
+        run: npm run build
+
+      - name: Verify extension archive exists
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          archive="public/okai-instagram-scanner.zip"
+
+          if [[ ! -f "$archive" ]]; then
+            echo "::error::The extension archive was not generated at $archive"
+            exit 1
+          fi
+
+          echo "Extension archive generated: $archive"
+          ls -lh "$archive"
+
+      - name: Validate ZIP integrity and required extension files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          archive="public/okai-instagram-scanner.zip"
+          entries="$(unzip -Z1 "$archive")"
+
+          unzip -t "$archive"
+
+          required_files=(
+            "okai-instagram-scanner/manifest.json"
+            "okai-instagram-scanner/content.js"
+            "okai-instagram-scanner/popup.html"
+          )
+
+          for required_file in "${required_files[@]}"; do
+            if ! grep -Fxq "$required_file" <<< "$entries"; then
+              echo "::error::Required file missing from extension archive: $required_file"
+              exit 1
+            fi
+
+            echo "Found required file: $required_file"
+          done
+
+          echo "Archive contents:"
+          printf '%s\n' "$entries"
+
+      - name: Upload extension archive artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: okai-instagram-scanner-extension
+          path: public/okai-instagram-scanner.zip
+          if-no-files-found: error
+          retention-days: 14
