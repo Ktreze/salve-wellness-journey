@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
 const LOVABLE_AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
@@ -70,7 +70,6 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
 function detectImageType(fileName: string, metadataType?: string) {
   const normalizedType = metadataType?.toLowerCase();
   if (normalizedType && ALLOWED_IMAGE_TYPES.has(normalizedType)) return normalizedType;
-
   const lowerName = fileName.toLowerCase();
   if (lowerName.endsWith(".png")) return "image/png";
   if (lowerName.endsWith(".webp")) return "image/webp";
@@ -132,119 +131,62 @@ Retorne SOMENTE um objeto JSON válido, sem markdown, com esta estrutura:
 }`;
 }
 
-async function callLovableAI(
-  profile: AnalysisRequest["profile"],
-  images: Array<{ mimeType: string; data: string }>,
-) {
+async function callLovableAI(profile: AnalysisRequest["profile"], images: Array<{ mimeType: string; data: string }>) {
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
-  if (!apiKey) {
-    throw new Error(
-      "Lovable AI não está habilitada ou acessível nesta Edge Function. Habilite Lovable AI em Lovable Cloud e disponibilize o segredo gerenciado LOVABLE_API_KEY nas Edge Functions.",
-    );
-  }
-
+  if (!apiKey) throw new Error("Lovable AI não configurada: habilite Lovable AI e disponibilize LOVABLE_API_KEY no servidor.");
   const model = Deno.env.get("LOVABLE_AI_MODEL") || DEFAULT_VISION_MODEL;
-  const content: Array<Record<string, unknown>> = [
-    { type: "text", text: buildPrompt(profile, images.length) },
-  ];
-
-  for (const image of images) {
-    content.push({
-      type: "image_url",
-      image_url: { url: `data:${image.mimeType};base64,${image.data}` },
-    });
-  }
-
-  const response = await fetch(LOVABLE_AI_GATEWAY_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.2,
-      response_format: { type: "json_object" },
-      messages: [{ role: "user", content }],
-    }),
-  });
-
+  const content: Array<Record<string, unknown>> = [{ type: "text", text: buildPrompt(profile, images.length) }];
+  for (const image of images) content.push({ type: "image_url", image_url: { url: `data:${image.mimeType};base64,${image.data}` } });
+  const response = await fetch(LOVABLE_AI_GATEWAY_URL, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` }, body: JSON.stringify({ model, temperature: 0.2, response_format: { type: "json_object" }, messages: [{ role: "user", content }] }) });
   if (!response.ok) {
     const errorBody = await response.text();
     let detail = errorBody;
-    try {
-      const parsed = JSON.parse(errorBody) as { error?: { message?: string }; message?: string };
-      detail = parsed.error?.message || parsed.message || errorBody;
-    } catch {
-      // A resposta original será exibida de forma segura abaixo.
-    }
-    throw new Error(`Lovable AI respondeu com erro ${response.status}: ${detail}`);
+    try { const parsed = JSON.parse(errorBody) as { error?: { message?: string }; message?: string }; detail = parsed.error?.message || parsed.message || errorBody; } catch { /* manter detalhe original */ }
+    throw new Error(`Falha no gateway da Lovable AI (${response.status}): ${detail}`);
   }
-
   const payload = await response.json();
   const raw = payload?.choices?.[0]?.message?.content;
-  if (typeof raw !== "string" || !raw.trim()) {
-    throw new Error("Lovable AI não retornou um relatório de análise.");
-  }
-
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    throw new Error("Lovable AI retornou um relatório fora do formato JSON esperado.");
-  }
-
-  return parsed;
+  if (typeof raw !== "string" || !raw.trim()) throw new Error("Resposta inválida do modelo: o conteúdo do relatório veio vazio.");
+  try { return JSON.parse(raw) as Record<string, unknown>; } catch { throw new Error("Resposta inválida do modelo: o relatório não está em JSON válido."); }
 }
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (request.method === "GET") return json({ ok: true, configured: Boolean(Deno.env.get("LOVABLE_API_KEY")) });
   if (request.method !== "POST") return json({ error: "Método não permitido." }, 405);
+
+  const authorization = request.headers.get("Authorization") || "";
+  const token = authorization.replace(/^Bearer\s+/i, "").trim();
+  if (!token) return json({ error: "Usuário não autenticado. Faça login antes de iniciar uma análise." }, 401);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!supabaseUrl || !serviceRoleKey) {
-    return json({ error: "Configuração administrativa do Supabase ausente no servidor." }, 500);
-  }
+  if (!supabaseUrl || !serviceRoleKey) return json({ error: "Configuração administrativa do Supabase ausente no servidor." }, 500);
 
   try {
+    const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+    const { data: userData, error: userError } = await admin.auth.getUser(token);
+    if (userError || !userData.user) return json({ error: "Sessão inválida ou expirada. Faça login novamente." }, 401);
+    const userId = userData.user.id;
     const body = (await request.json()) as AnalysisRequest;
     const analysisId = textValue(body.analysisId);
     const profile = body.profile || {};
     if (!analysisId) return json({ error: "A identificação da análise é obrigatória." }, 400);
+    if (!/^[a-zA-Z0-9-]+$/.test(analysisId)) return json({ error: "Identificação de análise inválida." }, 400);
 
-    const admin = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-    const { data: files, error: listError } = await admin.storage
-      .from("influencer-analysis")
-      .list(analysisId, { limit: MAX_IMAGES });
-    if (listError) {
-      throw new Error(`Não foi possível consultar os materiais: ${listError.message}`);
-    }
-
+    const { data: files, error: listError } = await admin.storage.from("influencer-analysis").list(`${userId}/${analysisId}`, { limit: MAX_IMAGES });
+    if (listError) throw new Error(`Falha no Storage ao consultar os materiais: ${listError.message}`);
     const imageFiles = (files || []).filter((file) => file.name && !file.name.endsWith("/"));
-    if (imageFiles.length > MAX_IMAGES) {
-      throw new Error(`A análise aceita no máximo ${MAX_IMAGES} imagens.`);
-    }
+    if (imageFiles.length === 0) return json({ error: "Imagens não encontradas para esta análise." }, 404);
+    if (imageFiles.length > MAX_IMAGES) throw new Error(`A análise aceita no máximo ${MAX_IMAGES} imagens.`);
 
     const images: Array<{ mimeType: string; data: string }> = [];
     for (const file of imageFiles) {
       const mimeType = detectImageType(file.name, file.metadata?.mimetype);
-      if (!ALLOWED_IMAGE_TYPES.has(mimeType)) {
-        throw new Error(`Formato não permitido no material ${file.name}. Use PNG, JPG, JPEG ou WEBP.`);
-      }
-
-      const { data, error: downloadError } = await admin.storage
-        .from("influencer-analysis")
-        .download(`${analysisId}/${file.name}`);
-      if (downloadError) {
-        throw new Error(`Falha ao recuperar ${file.name}: ${downloadError.message}`);
-      }
-      if (data.size > MAX_FILE_SIZE) {
-        throw new Error(`O material ${file.name} excede o limite de 10 MB.`);
-      }
-
+      if (!ALLOWED_IMAGE_TYPES.has(mimeType)) throw new Error(`Formato não permitido no material ${file.name}. Use PNG, JPG, JPEG ou WEBP.`);
+      const { data, error: downloadError } = await admin.storage.from("influencer-analysis").download(`${userId}/${analysisId}/${file.name}`);
+      if (downloadError) throw new Error(`Falha no Storage ao recuperar ${file.name}: ${downloadError.message}`);
+      if (data.size > MAX_FILE_SIZE) throw new Error(`O material ${file.name} excede o limite de 10 MB.`);
       images.push({ mimeType, data: arrayBufferToBase64(await data.arrayBuffer()) });
     }
 
@@ -254,18 +196,13 @@ Deno.serve(async (request) => {
     const model = score >= 82 && profile.authenticity !== "suspeita" ? "FIXO" : "COMISSÃO";
     const fixedValue = score >= 90 ? 70 : score >= 82 ? 60 : score >= 74 ? 50 : 0;
     const missing = getMissingData(profile);
-
-    result.score = score;
-    result.status = status;
-    result.model = model;
-    result.fixedValue = fixedValue;
+    result.score = score; result.status = status; result.model = model; result.fixedValue = fixedValue;
     result.confidence = clamp(Number(result.confidence) || 0, 0, 100);
     result.missing = Array.isArray(result.missing) ? result.missing : missing;
     result.positives = Array.isArray(result.positives) ? result.positives : [];
     result.negatives = Array.isArray(result.negatives) ? result.negatives : [];
     result.risks = Array.isArray(result.risks) ? result.risks : [];
     result.report = result.report || {};
-
     return json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro inesperado ao analisar a influenciadora.";

@@ -164,6 +164,7 @@ function OkaiDashboard() {
   const [materialUploadState, setMaterialUploadState] = useState<"idle" | "uploading" | "success" | "error">("idle");
   const [materialUploadError, setMaterialUploadError] = useState("");
   const [uploadedMaterialCount, setUploadedMaterialCount] = useState(0);
+  const [aiState, setAiState] = useState<"idle" | "preparing" | "uploading" | "analyzing" | "connected" | "error">("idle");
   const materialInputRef = useRef<HTMLInputElement>(null);
   const [audience, setAudience] = useState("adequada");
   const [authenticity, setAuthenticity] = useState("boa");
@@ -188,6 +189,7 @@ function OkaiDashboard() {
       const maxFileSize = 10 * 1024 * 1024;
       const analysisId = crypto.randomUUID();
 
+      setAiState(materialFiles.length > 0 ? "uploading" : "preparing");
       setMaterialUploadState("uploading");
       setMaterialUploadError("");
       setUploadedMaterialCount(0);
@@ -209,7 +211,7 @@ function OkaiDashboard() {
             .replace(/[\u0300-\u036f]/g, "")
             .replace(/[^a-zA-Z0-9._-]/g, "-")
             .replace(/-+/g, "-");
-          const storagePath = `${analysisId}/${crypto.randomUUID()}-${safeFileName}`;
+          const storagePath = `${userFolder}/${analysisId}/${crypto.randomUUID()}-${safeFileName}`;
           const { error } = await supabase.storage
             .from("influencer-analysis")
             .upload(storagePath, material.file, {
@@ -361,8 +363,16 @@ function OkaiDashboard() {
 
     const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
     const maxFileSize = 10 * 1024 * 1024;
-    const analysisId = crypto.randomUUID();
-    const uploadedPaths: string[] = [];
+          const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError || !authData.user) {
+        setMaterialUploadError("Usuário não autenticado. Faça login antes de iniciar uma análise.");
+        setMaterialUploadState("error");
+        setAiState("error");
+        return;
+      }
+      const analysisId = crypto.randomUUID();
+      const userFolder = authData.user.id;
+      const uploadedPaths: string[] = [];
 
     setMaterialUploadState("uploading");
     setMaterialUploadError("");
@@ -382,10 +392,12 @@ function OkaiDashboard() {
         setUploadedMaterialCount(index + 1);
       }
 
+      setAiState("analyzing");
       const { data, error } = await supabase.functions.invoke("analyze-influencer", { body: { analysisId, profile: { handle, name, niche, followers, engagement, views, frequency, history, observations, audience, authenticity, conversion, contentQuality } } });
       if (error) throw new Error(error.message);
       if (!data || typeof data !== "object") throw new Error("A Edge Function não retornou um relatório válido.");
       setResult(data as Analysis);
+      setAiState("connected");
       setMaterialUploadState("success");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Não foi possível concluir a análise de IA.";
