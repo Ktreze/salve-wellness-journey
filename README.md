@@ -24,3 +24,5 @@ cd <repository-name>
 npm i
 npm run dev
 ```
+
+<!-- teste de integração Lovable - 2025-03-08 -->
