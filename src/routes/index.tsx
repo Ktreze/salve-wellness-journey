@@ -10,6 +10,7 @@ import {
   CircleDollarSign,
   Clipboard,
   Clock3,
+  Download,
   Eye,
   FileText,
   Instagram,
@@ -532,6 +533,15 @@ function OkaiDashboard() {
         <header className="sticky top-0 z-20 flex h-[76px] items-center justify-between border-b border-white/[0.07] bg-[#050706]/85 px-4 backdrop-blur-xl sm:px-7">
           <div className="flex items-center gap-3">
             <button className="icon-button lg:hidden" onClick={() => setMobileMenu(true)} aria-label="Abrir menu"><Menu size={19} /></button>
+            <a
+              href="/okai-instagram-scanner.zip"
+              download="okai-instagram-scanner.zip"
+              className="mr-1 inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-[#82f58b]/25 bg-[#82f58b]/[0.07] px-3 text-[10px] font-bold uppercase tracking-[0.1em] text-[#82f58b] transition-colors hover:bg-[#82f58b]/[0.12]"
+            >
+              <Download size={14} />
+              <span className="hidden sm:inline">Baixar extensão Chrome</span>
+              <span className="sm:hidden">Extensão</span>
+            </a>
             <div className="hidden items-center gap-2 text-xs text-white/35 sm:flex">
               <span>Workspace</span><span>/</span><span className="text-white/75">Análises</span>
             </div>
